@@ -6,7 +6,6 @@ USER_DATA_DICTIONARY = {}  # Dictionary of all unfiltered user data {201: [[237,
 
 cosine_similarity = []  # 200x100 matrix of cosine similarities
 
-# TODO: MAKE ALL OPERATIONS IN FLOATS
 # Parse train.txt to place into 2D matrix
 with open("train.txt") as openfileobject:
     for line in openfileobject:
@@ -63,13 +62,13 @@ for user_id in range(USER_PREDICTION_MIN_ID, USER_PREDICTION_MAX_ID):
 
         # Handle cases in which there is only 0 or 1 similar movie
         if len(mutually_rated_movies) == 0:
-            single_user_cosine_similarity.append(0.0001)
+            single_user_cosine_similarity.append(0.01)
             continue
         elif len(mutually_rated_movies) == 1:
             # Use custom formula to calculate a pseudo cosine similarity
             training_rating = TRAINING_DATA_MATRIX[training_data_id][mutually_rated_movies[0]-1]
             user_rating = filtered_user_data_dictionary[mutually_rated_movies[0]]
-            pseudo_cos_similarity = (1/(abs(training_rating-user_rating)+1))  # 1/(difference + 1)
+            pseudo_cos_similarity = float((1/(abs(training_rating-user_rating)+1)))  # 1/(difference + 1)
 
             # Cannot let a cosine similarity reach a value of 1  # TODO: Needs better algorithm
             if pseudo_cos_similarity == 1:
@@ -86,8 +85,8 @@ for user_id in range(USER_PREDICTION_MIN_ID, USER_PREDICTION_MAX_ID):
             training_normalize += (int(training_rating) ** 2)
 
         # Normalize the cosine similarity
-        normalize = math.sqrt(user_normalize) * math.sqrt(training_normalize)
-        cos_similarity = similarity / normalize
+        normalize = float(math.sqrt(user_normalize) * math.sqrt(training_normalize))
+        cos_similarity = float(similarity / normalize)
 
         # Append to list of user's cosine similarities against test data
         single_user_cosine_similarity.append(cos_similarity)
@@ -116,38 +115,43 @@ for user_id in range(USER_PREDICTION_MIN_ID, USER_PREDICTION_MAX_ID):
             # Find all users that have also rated this movie
             for training_data_id in range(0, 200):
                 if TRAINING_DATA_MATRIX[training_data_id][movie_id_of_to_be_predicted-1] != 0:
-                    mutually_rated_movies.append(training_data_id)
+                    mutually_rated_movies.append(training_data_id+1)
 
             # Calculate nearest neighbors considering all users who have rated the movie we are trying to predict
-            for mutually_rated_movie_id in mutually_rated_movies:  # TODO: If Cosine Similarity is less than 0.5, do not even append
-                mutually_rated_movie_user_cos_sim = cosine_similarity[user_id - USER_PREDICTION_MIN_ID][
-                    mutually_rated_movie_id - 1]
+            for mutually_rated_movie_id in mutually_rated_movies:
+                mutually_rated_movie_user_cos_sim = cosine_similarity[user_id - USER_PREDICTION_MIN_ID][mutually_rated_movie_id - 1]
+                mutually_rated_movie_user_rating = TRAINING_DATA_MATRIX[mutually_rated_movie_id-1][movie_id_of_to_be_predicted-1]
+
+                # Do not add to list of nearest neighbors if barely even similar
+                if mutually_rated_movie_user_cos_sim < 0.05:
+                    continue  # TODO: There are still Cosine Similarities of 0?!
+
+                # Maintain list of top nearest neighbors available
                 if len(nearest_neighbors) > NUM_NEAREST_NEIGHBORS:
                     if mutually_rated_movie_user_cos_sim > nearest_neighbors[0]['cos_sim']:
                         nearest_neighbors.pop(0)
-                        nearest_neighbors.append(
-                            {'id': mutually_rated_movie_id, 'cos_sim': mutually_rated_movie_user_cos_sim})
+                        nearest_neighbors.append({'id': mutually_rated_movie_id, 'cos_sim': mutually_rated_movie_user_cos_sim, 'rating': mutually_rated_movie_user_rating})
                         nearest_neighbors = sorted(nearest_neighbors, key=lambda k: k['cos_sim'])
                 else:
-                    nearest_neighbors.append(
-                        {'id': mutually_rated_movie_id, 'cos_sim': mutually_rated_movie_user_cos_sim})
+                    nearest_neighbors.append({'id': mutually_rated_movie_id, 'cos_sim': mutually_rated_movie_user_cos_sim, 'rating': mutually_rated_movie_user_rating})
                     nearest_neighbors = sorted(nearest_neighbors, key=lambda k: k['cos_sim'])
 
-            # print nearest_neighbors  # TODO: There are still Cosine Similarities of 0?!
-
-            # Iterate through all of nearest neighbors to calculate using mutually rated movies
+            # Iterate through all of nearest neighbors to calculate a weighted average
             for neighbor in nearest_neighbors:
-                neighbor_movie_rating = TRAINING_DATA_MATRIX[neighbor['id']-1][movie_id_of_to_be_predicted-1]
-                if neighbor_movie_rating != 0:
-                    numerator += (int(neighbor['cos_sim']) * neighbor_movie_rating)
-                    denominator += int(neighbor['cos_sim'])
+                numerator += (float(neighbor['cos_sim']) * neighbor['rating'])
+                denominator += float(neighbor['cos_sim'])
 
-            # If no neighbors rated this movie, set the movie prediction to that of the highest similarity
+            # If no neighbors rated this movie, just take the average of this user's ratings
             if denominator == 0:
-                # id_of_most_similar_movie = nearest_neighbors.pop(len(nearest_neighbors)-1)['id']
-                # movie_prediction = nearest_neighbors.pop(len(nearest_neighbors)-1)['id']
-                movie_prediction = -1
+                average_rating = 0
+                number_of_ratings = 0
+                for single_user_data in USER_DATA_DICTIONARY[user_id]:
+                    if single_user_data[1] != 0:
+                        average_rating += single_user_data[1]
+                        number_of_ratings += 1
+                movie_prediction = int(average_rating/number_of_ratings)
             else:
-                movie_prediction = numerator/denominator
+                movie_prediction = int(numerator/denominator)
 
+            print str(movie_prediction) + "  " + str(nearest_neighbors)
             f.write(str(user_id) + " " + str(movie_id_of_to_be_predicted) + " " + str(movie_prediction) + "\n")
