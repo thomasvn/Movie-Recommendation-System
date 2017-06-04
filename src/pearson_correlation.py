@@ -3,6 +3,7 @@ import math
 
 
 def pearson_correlation_prediction():
+    f = open("../test20.txt", "a+")
     movie_prediction_counter = [0] * 5
     # Calculation of Pearson Coefficient for every user
     for user_id in range(config.USER_PREDICTION_MIN_ID, config.USER_PREDICTION_MAX_ID):
@@ -69,6 +70,8 @@ def pearson_correlation_prediction():
                             cos_similarity = float(0)
                         else:
                             cos_similarity = float(similarity / normalize)
+                            if cos_similarity > 1:
+                                cos_similarity = 1
 
                         single_training_data_info = {
                             'training_data_id': (training_data_id + 1),
@@ -79,22 +82,49 @@ def pearson_correlation_prediction():
                         }
                         relevant_training_data_info.append(single_training_data_info)
 
-                # Calculate the Pearson Correlation Rating using all relevant training data
+                # Calculate nearest neighbors considering all users who have rated the movie we are trying to predict
+                nearest_neighbors = []
+                for training_data in relevant_training_data_info:
+                    # Do not add to list of nearest neighbors if barely even similar
+                    if training_data['pearson_coefficient'] < 0.05:
+                        continue
+
+                    # Maintain list of top nearest neighbors available
+                    if len(nearest_neighbors) > config.NUM_NEAREST_NEIGHBORS:
+                        if training_data['pearson_coefficient'] > nearest_neighbors[0]['pearson_coefficient']:
+                            nearest_neighbors.pop(0)
+                            nearest_neighbors.append(training_data)
+                            nearest_neighbors = sorted(nearest_neighbors, key=lambda k: k['pearson_coefficient'])
+                    else:
+                        nearest_neighbors.append(training_data)
+                        nearest_neighbors = sorted(nearest_neighbors, key=lambda k: k['pearson_coefficient'])
+
+                # Calculate the Pearson Correlation Rating using all nearest neighbors
                 numerator = 0
                 denominator = 0
-                for training_data in relevant_training_data_info:
+                for training_data in nearest_neighbors:
                     numerator += ((training_data['rating_of_movie_to_be_predicted'] - training_data['avg_rating']) * training_data['pearson_coefficient'])
-                    denominator += training_data['pearson_coefficient']
+                    denominator += abs(training_data['pearson_coefficient'])
 
-                pearson_correlation_rating = average_user_rating + float(numerator/denominator)
+                # If no other user is correlated to the user we're trying to predict, cold start
+                if denominator == 0:
+                    pearson_correlation_rating = average_user_rating
+                else:
+                    pearson_correlation_rating = average_user_rating + float(numerator/denominator)
 
-                # TODO: Pearson Correlation Rating ends up being higher than 5
                 # Round this number either up or down
                 if pearson_correlation_rating % 1 < 0.5:
                     pearson_correlation_rating = int(math.floor(pearson_correlation_rating))
                 else:
                     pearson_correlation_rating = int(math.ceil(pearson_correlation_rating))
 
+                # Make sure the rating is still in bounds
+                if pearson_correlation_rating > 5:
+                    pearson_correlation_rating = 5
+                elif pearson_correlation_rating < 1:
+                    pearson_correlation_rating = 1
+
+                f.write(str(user_id) + " " + str(movie_id_of_to_be_predicted) + " " + str(pearson_correlation_rating) + "\n")
                 print str(pearson_correlation_rating) + " " + str(relevant_training_data_info)
                 movie_prediction_counter[pearson_correlation_rating - 1] += 1
 
@@ -103,4 +133,3 @@ def pearson_correlation_prediction():
     print "3: " + str(movie_prediction_counter[2])
     print "4: " + str(movie_prediction_counter[3])
     print "5: " + str(movie_prediction_counter[4])
-
