@@ -2,31 +2,9 @@ import config
 import math
 
 
-def pearson_correlation_prediction():
+def adjusted_cosine_similarity():
     f = open("../test_20.txt", "a+")
     movie_prediction_counter = [0] * 5
-
-    # Calculate the IUF values for all movies
-    iuf = []  # Array with 1000 IUF values for each movie
-    for movie_rating in range(0,1000):
-        num_users_who_have_rated = 0
-        for training_data_id in range(0,200):
-            if config.TRAINING_DATA_MATRIX[training_data_id][movie_rating] != 0:
-                num_users_who_have_rated += 1
-        if num_users_who_have_rated != 0:
-            iuf.append(math.log(1000 / num_users_who_have_rated))
-        else:
-            iuf.append(1)
-
-    # Calculate minimum and maximum values of IUF
-    max_iuf = iuf[0]
-    min_iuf = iuf[0]
-    for value in iuf:
-        if value > max_iuf:
-            max_iuf = value
-        if value < min_iuf:
-            min_iuf = value
-
     # Calculation of Pearson Coefficient for every user
     for user_id in range(config.USER_PREDICTION_MIN_ID, config.USER_PREDICTION_MAX_ID):
         filtered_user_data_dictionary = {}  # {"movie id" : "movie rating", ...}
@@ -95,23 +73,6 @@ def pearson_correlation_prediction():
                             if cos_similarity > 1:
                                 cos_similarity = 1
 
-# ------------------------------------------- Inverse User Frequency (IUF) ---------------------------------------------
-                        # Average the IUFs across all movies
-                        average_iuf = 0
-                        counter = 0
-                        for movie_id in commonly_rated_movies:
-                            counter += 1
-                            average_iuf += iuf[movie_id-1]
-                        average_iuf /= counter
-
-                        # Multiply the average IUF with the current cosine similarity
-                        cos_similarity *= average_iuf
-
-                        # Normalize by dividing the cosine similarity with the max IUF value
-                        cos_similarity /= max_iuf
-
-# ----------------------------------------------------------------------------------------------------------------------
-
                         single_training_data_info = {
                             'training_data_id': (training_data_id + 1),
                             'common_movie_ratings': commonly_rated_movies,
@@ -141,11 +102,23 @@ def pearson_correlation_prediction():
 
 # ------------------------------------------ Normal Pearson Correlation ------------------------------------------------
                 # Calculate the Pearson Correlation Rating using all nearest neighbors
+                # numerator = 0
+                # denominator = 0
+                # for training_data in nearest_neighbors:
+                #     numerator += ((training_data['rating_of_movie_to_be_predicted'] - training_data['avg_rating']) * training_data['pearson_coefficient'])
+                #     denominator += abs(training_data['pearson_coefficient'])
+
+
+# ----------------------------------------- Inverse User Frequency (IUF) -----------------------------------------------
                 numerator = 0
                 denominator = 0
                 for training_data in nearest_neighbors:
-                    numerator += ((training_data['rating_of_movie_to_be_predicted'] - training_data['avg_rating']) * training_data['pearson_coefficient'])
-                    denominator += abs(training_data['pearson_coefficient'])
+                    if len(relevant_training_data_info) != 0:
+                        iuf = math.log(1000/len(relevant_training_data_info))
+                    else:
+                        iuf = 1
+                    numerator += ((training_data['rating_of_movie_to_be_predicted'] - training_data['avg_rating']) * (training_data['pearson_coefficient'] * iuf))
+                    denominator += abs(training_data['pearson_coefficient'] * iuf)
 
 
 # --------------------------------------------- Case Amplification -----------------------------------------------------
