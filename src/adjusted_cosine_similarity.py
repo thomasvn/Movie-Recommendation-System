@@ -1,6 +1,7 @@
 import config
 import math
 
+adjusted_cosine_similarities = [[0 for x in range(1000)] for y in range(1000)]  # 1000x1000 matrix of movie to movie similarities
 TRANSPOSED_TRAINING_DATA_MATRIX = []  # 1000x200 matrix of training data
 
 
@@ -16,117 +17,95 @@ def adjusted_cosine_similarity():
             single_movie_ratings.append(config.TRAINING_DATA_MATRIX[training_data_id][movie_id])
             TRANSPOSED_TRAINING_DATA_MATRIX.append(single_movie_ratings)
 
-    # Calculation of Pearson Coefficient for every user that needs a rating prediction
+    # Calculate user averages for all 200 users in training data
+    training_data_rating_averages = []
+    for ratings_of_single_user in config.TRAINING_DATA_MATRIX:
+        rating_average = 0
+        count = 0
+        for rating in ratings_of_single_user:
+            if rating != 0:
+                rating_average += 1
+                count += 1
+        rating_average /= count
+        training_data_rating_averages.append(rating_average)
+
+    # Calculate movie to movie similarities for all movies
+    for movie_id1 in range(0,1000):
+
+        # Find movies that have been rated by movie_id1
+        movie_ratings_of_movieid1 = {}
+        for user_id in range(0, 200):
+            user_rating = TRANSPOSED_TRAINING_DATA_MATRIX[movie_id1][user_id]
+            if user_rating != 0:
+                movie_ratings_of_movieid1[user_id+1] = user_rating
+
+        for movie_id2 in range(0,1000):
+            if movie_id1 == movie_id2:
+                adjusted_cosine_similarities[movie_id1][movie_id2] = 1
+                continue
+
+            # Find all users that have rated both movie_id1 as well as movie_id2 (common dimensions)
+            common_user_ratings = {}  # {'user_id': 'movie_rating', ... }
+            for user_id in range(0,200):
+                user_rating = TRANSPOSED_TRAINING_DATA_MATRIX[movie_id2][user_id]
+                if user_rating != 0 and user_id+1 in movie_ratings_of_movieid1:
+                    common_user_ratings[user_id+1] = user_rating
+
+            movie_ratings_of_movieid2 = common_user_ratings
+
+            # Calculate the cosine similarity between the user vector and the training data vector
+            similarity = 0
+            rating_normalized1 = 0
+            rating_normalized2 = 0
+            for common_user_id in common_user_ratings:
+                rating_difference1 = movie_ratings_of_movieid1[common_user_id] - training_data_rating_averages[common_user_id - 1]
+                rating_difference2 = movie_ratings_of_movieid2[common_user_id] - training_data_rating_averages[common_user_id - 1]
+                similarity += (rating_difference1 * rating_difference2)
+                rating_normalized1 += (rating_difference1 ** 2)
+                rating_normalized2 += (rating_difference2 ** 2)
+
+            normalize = float(math.sqrt(rating_normalized1) * math.sqrt(rating_normalized2))
+            if len(common_user_ratings) == 1:
+                for common_user_id in common_user_ratings:
+                    difference = abs(movie_ratings_of_movieid1[common_user_id] - movie_ratings_of_movieid2[common_user_id])
+                    cos_similarity = float(1 / (difference + 1))
+                if cos_similarity == 1:
+                    cos_similarity = 0.95
+            elif normalize == 0:
+                cos_similarity = float(0)
+            else:
+                cos_similarity = float(similarity / normalize)
+                if cos_similarity > 1:
+                    cos_similarity = 1
+
+            adjusted_cosine_similarities[movie_id1][movie_id2] = cos_similarity
+            print cos_similarity
+        return
+
+# ---------------------------------------- Adjusted Cosine Similarity Rating -------------------------------------------
     for user_id in range(config.USER_PREDICTION_MIN_ID, config.USER_PREDICTION_MAX_ID):
-        filtered_user_data_dictionary = {}  # {"movie id" : "movie rating", ...}
-
-        # Gather rating information about user
-        length_of_user_ratings = 0
-        sum_of_user_ratings = 0
-        for user_data in config.USER_DATA_DICTIONARY[user_id]:
-            if user_data[1] != 0:
-                filtered_user_data_dictionary[user_data[0]] = user_data[1]
-                sum_of_user_ratings += user_data[1]
-                length_of_user_ratings += 1
-        average_user_rating = float(sum_of_user_ratings/length_of_user_ratings)
-
-        # Iterate through all user data that requires predictions
         for user_data in config.USER_DATA_DICTIONARY[user_id]:
             if user_data[1] == 0:
-                movie_id_of_to_be_predicted = user_data[0]
-                ratings_of_movie_to_be_predicted = []  # List of dictionaries {'user_id': 'rating'}
-                relevant_movie_data_info = []  # List of dictionaries. Seen below in "single_training_data_info".
-
-                # Find current ratings of movie to be predicted
-                for user_id in range(0,200):
-                    user_rating = TRANSPOSED_TRAINING_DATA_MATRIX[movie_id_of_to_be_predicted-1][user_id]
-                    if user_rating != 0:
-                        single_rating = {user_id+1: user_rating}
-                        ratings_of_movie_to_be_predicted.append(single_rating)
-
-                # Find the similarity of the movie to be predicted against all other movies
-                for movie_id in range(0, 1000):
-                    common_user_ratings = {}  # {'user_id': 'movie_rating', ... }
-
-                    # Identify users who have co-rated the movie
-                    average_movie_rating = 0
-                    counter = 0
-                    for user_id in range(0,200):
-                        movie_rating = TRANSPOSED_TRAINING_DATA_MATRIX[movie_id][user_id]
-                        if movie_rating != 0 and user_id+1 in ratings_of_movie_to_be_predicted:
-                            common_user_ratings[user_id+1] = movie_rating
-                            average_movie_rating += movie_rating
-                            counter += 1
-
-                    # If the training data user doesn't have any similarly rated movies, do not consider
-                    if not bool(common_user_ratings):
-                        continue
-                    else:
-                        average_movie_rating /= counter
-
-                    # Calculate the similarity between the movie to be predicted vector and the training data vector
-                    similarity = 0
-                    user_normalized = 0
-                    training_normalized = 0
-                    for movie_id in common_user_ratings:
-                        user_difference = ratings_of_movie_to_be_predicted[movie_id] - average_user_rating
-                        training_difference = common_user_ratings[movie_id] - average_movie_rating
-                        similarity += (user_difference * training_difference)
-                        user_normalized += (user_difference ** 2)
-                        training_normalized += (training_difference ** 2)
-
-                    normalize = float(math.sqrt(user_normalized) * math.sqrt(training_normalized))
-                    if len(common_user_ratings) == 1:
-                        for movie_id in common_user_ratings:
-                            difference = abs(common_user_ratings[movie_id] - ratings_of_movie_to_be_predicted[movie_id])
-                            cos_similarity = float(1 / (difference + 1))
-                        if cos_similarity == 1:
-                            cos_similarity = 0.95
-                    elif normalize == 0:
-                        cos_similarity = float(0)
-                    else:
-                        cos_similarity = float(similarity / normalize)
-                        if cos_similarity > 1:
-                            cos_similarity = 1
-
-                    single_training_data_info = {
-                        'training_data_id': (training_data_id + 1),
-                        'common_movie_ratings': common_user_ratings,
-                        'avg_rating': average_movie_rating,
-                        'rating_of_movie_to_be_predicted': config.TRAINING_DATA_MATRIX[training_data_id][movie_id_of_to_be_predicted-1],
-                        'pearson_coefficient': cos_similarity
-                    }
-                    relevant_movie_data_info.append(single_training_data_info)
-
-                # Calculate nearest neighbors considering all users who have rated the movie we are trying to predict
-                nearest_neighbors = []
-                for training_data in relevant_movie_data_info:
-                    # Do not add to list of nearest neighbors if barely even similar
-                    if training_data['pearson_coefficient'] < 0.05:
-                        continue
-
-                    # Maintain list of top nearest neighbors available
-                    if len(nearest_neighbors) > config.NUM_NEAREST_NEIGHBORS:
-                        if training_data['pearson_coefficient'] > nearest_neighbors[0]['pearson_coefficient']:
-                            nearest_neighbors.pop(0)
-                            nearest_neighbors.append(training_data)
-                            nearest_neighbors = sorted(nearest_neighbors, key=lambda k: k['pearson_coefficient'])
-                    else:
-                        nearest_neighbors.append(training_data)
-                        nearest_neighbors = sorted(nearest_neighbors, key=lambda k: k['pearson_coefficient'])
-
-                # Calculate the Pearson Correlation Rating using all nearest neighbors
                 numerator = 0
                 denominator = 0
-                for training_data in nearest_neighbors:
-                    numerator += ((training_data['rating_of_movie_to_be_predicted'] - training_data['avg_rating']) * training_data['pearson_coefficient'])
-                    denominator += abs(training_data['pearson_coefficient'])
+                movie_id_of_to_be_predicted = user_data[0]
+
+                # Iterate through all commonly rated movies
+                average_user_rating = 0
+                count = 0
+                for user_data_rated in config.USER_DATA_DICTIONARY[user_id]:
+                    if user_data_rated[1] != 0:
+                        numerator += (adjusted_cosine_similarities[movie_id_of_to_be_predicted-1][user_data[0]-1] * user_data_rated[1])
+                        denominator += adjusted_cosine_similarities[movie_id_of_to_be_predicted-1][user_data[0]-1]
+                        average_user_rating += user_data_rated[1]
+                        count += 1
+                average_user_rating /= count
 
                 # If no other user is correlated to the user we're trying to predict, cold start
                 if denominator == 0:
                     pearson_correlation_rating = average_user_rating
                 else:
-                    pearson_correlation_rating = average_user_rating + float(numerator/denominator)
+                    pearson_correlation_rating = average_user_rating + float(numerator / denominator)
 
                 # Round this number either up or down
                 if pearson_correlation_rating % 1 < 0.5:
@@ -140,8 +119,9 @@ def adjusted_cosine_similarity():
                 elif pearson_correlation_rating < 1:
                     pearson_correlation_rating = 1
 
-                f.write(str(user_id) + " " + str(movie_id_of_to_be_predicted) + " " + str(pearson_correlation_rating) + "\n")
-                print str(pearson_correlation_rating) + " " + str(relevant_movie_data_info)
+                f.write(str(user_id) + " " + str(movie_id_of_to_be_predicted) + " " + str(
+                    pearson_correlation_rating) + "\n")
+                print str(pearson_correlation_rating)
                 movie_prediction_counter[pearson_correlation_rating - 1] += 1
 
     print "1: " + str(movie_prediction_counter[0])
