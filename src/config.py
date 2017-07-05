@@ -3,7 +3,7 @@ USER_DATA_DICTIONARY = {}  # Dictionary of all unfiltered user data {201: [[237,
 
 
 # ------------------------------------------- Setup Configurations -----------------------------------------------------
-NUM_NEAREST_NEIGHBORS = 10
+NUM_NEAREST_NEIGHBORS = 30
 NUM_NEAREST_NEIGHBORS_K_DIMENSIONS = 5
 # USER_DATA_TEST_FILE = "test5.txt"
 # USER_DATA_TEST_FILE = "test10.txt"

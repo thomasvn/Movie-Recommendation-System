@@ -67,7 +67,7 @@ def cosine_similarity_prediction():
 
 
 # --------------------------------------- Rating Prediction For All Users ----------------------------------------------
-    f = open("../test_.txt", "a+")
+    f = open("../test_20.txt", "a+")
     movie_prediction_counter = [0] * 5
     for user_id in range(config.USER_PREDICTION_MIN_ID, config.USER_PREDICTION_MAX_ID):
 
